@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -59,7 +60,7 @@ func UploadFile(c *gin.Context) {
 	reqParams := make(url.Values)
 
 	// Generates a presigned url which expires in a day
-	presignedURL, err := minioClient.PresignedGetObject(context.Background(), bucketName, objectName, time.Second * 24 * 60 * 60, reqParams)
+	presignedURL, err := minioClient.PresignedGetObject(context.Background(), bucketName, objectName, time.Second*24*60*60, reqParams)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -82,7 +83,6 @@ func DetectContentType(out multipart.File) (string, error) {
 
 	// Reset the read pointer if necessary so no part of the stream gets lost
 	out.Seek(0, 0)
-
 
 	// Use the net/http package's handy DectectContentType function. Always returns a valid
 	// content-type by returning "application/octet-stream" if no others seemed to match.
@@ -112,6 +112,14 @@ func CreateObjectName(file multipart.File) (string, error) {
 	return objectName, nil
 }
 
+func prometheusHandler() gin.HandlerFunc {
+	h := promhttp.Handler()
+
+	return func(c *gin.Context) {
+		h.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
 func main() {
 	router := gin.Default()
 	router.LoadHTMLGlob("template/*")
@@ -120,5 +128,6 @@ func main() {
 	})
 	router.POST("/upload", UploadFile)
 	router.StaticFS("/file", http.Dir("public"))
+	router.GET("/metric", prometheusHandler())
 	router.Run(":8080")
 }
