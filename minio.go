@@ -134,10 +134,6 @@ func recordMetrics() {
 	}()
 }
 
-func PrometheusNewRegistry() *prometheus.Registry {
-	return prometheus.NewRegistry()
-}
-
 var (
 	opsProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "myapp_processed_ops_total",
