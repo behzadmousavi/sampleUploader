@@ -7,6 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"mime/multipart"
@@ -49,10 +51,13 @@ func UploadFile(c *gin.Context) {
 		log.Printf(err.Error())
 	}
 
+	m := httpReqs.WithLabelValues("200", "GET")
 	// Upload the file with PutObject
 	info, err := minioClient.PutObject(ctx, bucketName, objectName, file, size, minio.PutObjectOptions{})
 	if err != nil {
 		log.Fatalln(err)
+	} else {
+		m.Inc()
 	}
 	log.Printf("Successfully uploaded %s of size %d\n", objectName, info.Size)
 
@@ -120,14 +125,43 @@ func prometheusHandler() gin.HandlerFunc {
 	}
 }
 
+func recordMetrics() {
+	go func() {
+		for {
+			opsProcessed.Inc()
+			time.Sleep(2 * time.Second)
+		}
+	}()
+}
+
+func PrometheusNewRegistry() *prometheus.Registry {
+	return prometheus.NewRegistry()
+}
+
+var (
+	opsProcessed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "myapp_processed_ops_total",
+		Help: "The total number of processed events",
+	})
+
+	httpReqs = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "How many HTTP requests processed, partitioned by status code and HTTP method.",
+		},
+		[]string{"code", "method"},
+	)
+)
+
 func main() {
-	router := gin.Default()
+	router := gin.New()
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
 	router.POST("/upload", UploadFile)
 	router.StaticFS("/file", http.Dir("public"))
+	recordMetrics()
 	router.GET("/metric", prometheusHandler())
 	router.Run(":8080")
 }
